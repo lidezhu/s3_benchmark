@@ -43,6 +43,9 @@ struct Args {
 
     #[arg(long, default_value_t = 1)]
     get_count_per_thread: u32,
+
+    #[arg(short, long, default_value_t = false)]
+    verbose: bool,
 }
 
 #[tokio::main]
@@ -56,6 +59,8 @@ async fn main() {
     let put_count_per_thread = args.put_count_per_thread;
     let get_concurrency = args.get_concurrency;
     let get_count_per_thread = args.get_count_per_thread;
+
+    let verbose = args.verbose;
 
     let s3 = S3Client::new(Region::from_str(endpoint.as_str()).unwrap());
 
@@ -82,7 +87,6 @@ async fn main() {
                     body: Some(body.into()),
                     ..Default::default()
                 };
-                println!("before put");
                 match s3.put_object(put_req).await {
                     Ok(_) => {
                         let end_time = Instant::now();
@@ -92,6 +96,13 @@ async fn main() {
                             request_type: RequestType::Put,
                             file_size,
                         };
+                        if verbose {
+                            println!(
+                                "put key {} takes {}ms",
+                                key,
+                                end_time.duration_since(start_time).as_millis()
+                            );
+                        }
                         stats_vec.lock().unwrap().push(stats);
                     }
                     Err(RusotoError::HttpDispatch(_)) => {
@@ -101,7 +112,6 @@ async fn main() {
                         eprintln!("Error putting object: {:?}", e);
                     }
                 }
-                println!("after put");
             }
         });
         tasks_future.push(put_task_future);
@@ -134,7 +144,6 @@ async fn main() {
                     }
                     request.continuation_token = result.next_continuation_token;
                 }
-                println!("list objects size: {}", objects.len());
                 if objects.len() == 0 {
                     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                     continue;
@@ -150,7 +159,6 @@ async fn main() {
                     key: key.clone(),
                     ..Default::default()
                 };
-                println!("before get {}", key);
                 match s3.get_object(get_req).await {
                     Ok(resp) => match resp.body {
                         Some(body) => {
@@ -165,6 +173,13 @@ async fn main() {
                                 file_size: buf.len(),
                             };
                             stats_vec.lock().unwrap().push(stats);
+                            if verbose {
+                                println!(
+                                    "get key {} takes {}ms",
+                                    key,
+                                    end_time.duration_since(start_time).as_millis()
+                                );
+                            }
                         }
                         None => {
                             eprintln!("No body in response");
@@ -175,15 +190,12 @@ async fn main() {
                         eprintln!("Error getting object: {:?}", e);
                     }
                 }
-                println!("after get");
             }
         });
         tasks_future.push(get_task_future);
     }
 
-    println!("waiting for futures");
     let _results = block_on(futures::future::join_all(tasks_future));
-    println!("Done!");
 
     let mut put_count = 0;
     let mut get_count = 0;
