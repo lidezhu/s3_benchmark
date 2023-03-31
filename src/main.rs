@@ -79,8 +79,8 @@ async fn main() {
                 let file_size = thread_rng().gen_range(1024..1024 * 1024 * 100);
                 let file_name = format!("put_{}", file_size);
                 let key = format!("{}/{}", root_prefix, file_name);
-                let start_time = Instant::now();
                 let body: Vec<u8> = (0..file_size).map(|_| thread_rng().gen()).collect();
+                let start_time = Instant::now();
                 let put_req = PutObjectRequest {
                     bucket: bucket.clone(),
                     key: key.clone(),
@@ -137,12 +137,25 @@ async fn main() {
                 };
                 let mut objects = Vec::new();
                 loop {
-                    let result = s3.list_objects_v2(request.clone()).await.unwrap();
-                    objects.extend(result.contents.unwrap());
-                    if result.next_continuation_token.is_none() {
-                        break;
+                    match s3.list_objects_v2(request.clone()).await {
+                        Ok(result) => {
+                            if result.contents.is_none() {
+                                break;
+                            }
+                            objects.extend(result.contents.unwrap());
+                            if result.next_continuation_token.is_none() {
+                                break;
+                            }
+                            request.continuation_token = result.next_continuation_token;
+                        }
+                        Err(RusotoError::HttpDispatch(_)) => {
+                            println!("HttpDispatch");
+                        }
+                        Err(e) => {
+                            eprintln!("Error listing objects: {:?}", e);
+                            break;
+                        }
                     }
-                    request.continuation_token = result.next_continuation_token;
                 }
                 if objects.len() == 0 {
                     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
