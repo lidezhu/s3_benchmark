@@ -1,10 +1,10 @@
+use clap::Parser;
 use futures::executor::block_on;
 use rand::prelude::*;
 use rusoto_core::{Region, RusotoError};
 use rusoto_s3::{GetObjectRequest, ListObjectsV2Request, PutObjectRequest, S3Client, S3};
-use std::{env, sync::Arc, time::Instant};
+use std::{sync::Arc, time::Instant};
 use tokio::io::AsyncReadExt;
-use tokio::time::sleep;
 
 #[derive(Debug)]
 enum RequestType {
@@ -20,24 +20,42 @@ struct Stats {
     file_size: usize,
 }
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(short, long)]
+    endpoint: String,
+
+    #[arg(short, long)]
+    bucket: String,
+
+    #[arg(short, long)]
+    root_prefix: String,
+
+    #[arg(long, default_value_t = 1)]
+    put_thread_num: u32,
+
+    #[arg(long, default_value_t = 1)]
+    put_per_thread: u32,
+
+    #[arg(long, default_value_t = 1)]
+    get_thread_num: u32,
+
+    #[arg(long, default_value_t = 1)]
+    get_per_thread: u32,
+}
+
 #[tokio::main]
 async fn main() {
-    let num_args = env::args().len();
-    if num_args != 8 {
-        println!(
-            "Usage: {} endpoint bucket root_prefix put_thread_num put_per_thread get_thread_num get_per_thread",
-            env::args().nth(0).unwrap()
-        );
-        std::process::exit(1);
-    }
+    let args = Args::parse();
 
-    let endpoint = env::args().nth(1).unwrap();
-    let bucket = env::args().nth(2).unwrap();
-    let root_prefix = env::args().nth(3).unwrap();
-    let put_thread_num = env::args().nth(4).unwrap().parse::<usize>().unwrap();
-    let put_per_thread = env::args().nth(5).unwrap().parse::<usize>().unwrap();
-    let get_thread_num = env::args().nth(6).unwrap().parse::<usize>().unwrap();
-    let get_per_thread = env::args().nth(7).unwrap().parse::<usize>().unwrap();
+    let endpoint = args.endpoint;
+    let bucket = args.bucket;
+    let root_prefix = args.root_prefix;
+    let put_thread_num = args.put_thread_num;
+    let put_per_thread = args.put_per_thread;
+    let get_thread_num = args.get_thread_num;
+    let get_per_thread = args.get_per_thread;
 
     let s3 = S3Client::new(Region::Custom {
         name: "us-east-2".to_owned(),
@@ -100,7 +118,11 @@ async fn main() {
         let root_prefix = root_prefix.clone();
 
         let get_task_future = tokio::task::spawn(async move {
-            for _ in 0..get_per_thread {
+            let mut get_num = 0;
+            loop {
+                if get_num >= get_per_thread {
+                    break;
+                }
                 let mut request = ListObjectsV2Request {
                     bucket: bucket.clone(),
                     prefix: Some(root_prefix.clone()),
@@ -120,6 +142,7 @@ async fn main() {
                     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                     continue;
                 }
+                get_num += 1;
                 let key = objects[thread_rng().gen_range(0..objects.len())]
                     .key
                     .clone()
