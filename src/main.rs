@@ -3,7 +3,7 @@ use futures::executor::block_on;
 use rand::prelude::*;
 use rusoto_core::{Region, RusotoError};
 use rusoto_s3::{GetObjectRequest, ListObjectsV2Request, PutObjectRequest, S3Client, S3};
-use std::{sync::Arc, time::Instant};
+use std::{str::FromStr, sync::Arc, time::Instant};
 use tokio::io::AsyncReadExt;
 
 #[derive(Debug)]
@@ -57,10 +57,7 @@ async fn main() {
     let get_concurrency = args.get_concurrency;
     let get_count_per_thread = args.get_count_per_thread;
 
-    let s3 = S3Client::new(Region::Custom {
-        name: "us-east-2".to_owned(),
-        endpoint: endpoint,
-    });
+    let s3 = S3Client::new(Region::from_str(endpoint.as_str()).unwrap());
 
     let stats_vec = Arc::new(std::sync::Mutex::new(Vec::new()));
 
