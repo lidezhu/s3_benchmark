@@ -33,16 +33,16 @@ struct Args {
     root_prefix: String,
 
     #[arg(long, default_value_t = 1)]
-    put_thread_num: u32,
+    put_concurrency: u32,
 
     #[arg(long, default_value_t = 1)]
-    put_per_thread: u32,
+    put_count_per_thread: u32,
 
     #[arg(long, default_value_t = 1)]
-    get_thread_num: u32,
+    get_concurrency: u32,
 
     #[arg(long, default_value_t = 1)]
-    get_per_thread: u32,
+    get_count_per_thread: u32,
 }
 
 #[tokio::main]
@@ -52,10 +52,10 @@ async fn main() {
     let endpoint = args.endpoint;
     let bucket = args.bucket;
     let root_prefix = args.root_prefix;
-    let put_thread_num = args.put_thread_num;
-    let put_per_thread = args.put_per_thread;
-    let get_thread_num = args.get_thread_num;
-    let get_per_thread = args.get_per_thread;
+    let put_concurrency = args.put_concurrency;
+    let put_count_per_thread = args.put_count_per_thread;
+    let get_concurrency = args.get_concurrency;
+    let get_count_per_thread = args.get_count_per_thread;
 
     let s3 = S3Client::new(Region::Custom {
         name: "us-east-2".to_owned(),
@@ -67,13 +67,13 @@ async fn main() {
     let mut tasks_future = Vec::new();
 
     // spawn put threads
-    for _ in 0..put_thread_num {
+    for _ in 0..put_concurrency {
         let s3 = s3.clone();
         let stats_vec = Arc::clone(&stats_vec);
         let bucket = bucket.clone();
         let root_prefix = root_prefix.clone();
         let put_task_future = tokio::task::spawn(async move {
-            for _ in 0..put_per_thread {
+            for _ in 0..put_count_per_thread {
                 let file_size = thread_rng().gen_range(1024..1024 * 1024 * 100);
                 let file_name = format!("put_{}", file_size);
                 let key = format!("{}/{}", root_prefix, file_name);
@@ -111,7 +111,7 @@ async fn main() {
     }
 
     // spawn get threads
-    for _ in 0..get_thread_num {
+    for _ in 0..get_concurrency {
         let s3 = s3.clone();
         let stats_vec = Arc::clone(&stats_vec);
         let bucket = bucket.clone();
@@ -120,7 +120,7 @@ async fn main() {
         let get_task_future = tokio::task::spawn(async move {
             let mut get_num = 0;
             loop {
-                if get_num >= get_per_thread {
+                if get_num >= get_count_per_thread {
                     break;
                 }
                 let mut request = ListObjectsV2Request {
